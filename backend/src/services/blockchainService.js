@@ -12,14 +12,31 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 /**
+ * Deterministic JSON stringify (sorts object keys)
+ * Ensures consistent hashing regardless of key insertion order
+ */
+function deterministicStringify(obj) {
+    return JSON.stringify(obj, (key, value) => {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            return Object.keys(value).sort().reduce((sorted, k) => {
+                sorted[k] = value[k];
+                return sorted;
+            }, {});
+        }
+        return value;
+    });
+}
+
+/**
  * Calculate SHA-256 hash of a block
  * @param {Object} block - Block data
  * @returns {string} Hex hash
  */
 function calculateHash(block) {
-    const record = `${block.index}${block.previousHash}${JSON.stringify(block.data)}${block.timestamp}${block.nonce}`;
+    const record = `${block.index}${block.previousHash}${deterministicStringify(block.data)}${block.timestamp}${block.nonce}`;
     return crypto.createHash('sha256').update(record).digest('hex');
 }
+
 
 /**
  * Get the latest block in the chain

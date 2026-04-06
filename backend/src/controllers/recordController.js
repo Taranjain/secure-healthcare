@@ -49,12 +49,20 @@ async function createRecord(req, res) {
             // Remove temp upload
             fs.unlinkSync(req.file.path);
 
-            encryptedResult = {
-                encryptedData: data ? encryptionService.encryptRecord(data).encryptedData : '',
-                encryptionIV: iv,
-                encryptionTag: tag,
-                encryptedKey,
-            };
+            // For text data alongside a file, encrypt with its OWN key/IV/tag
+            // so that decryptRecord() can decrypt it consistently.
+            // The file has its own separate encryption context stored in the filePath.
+            if (data) {
+                encryptedResult = encryptionService.encryptRecord(data);
+            } else {
+                // No text data — store the file's encryption metadata
+                encryptedResult = {
+                    encryptedData: '',
+                    encryptionIV: iv,
+                    encryptionTag: tag,
+                    encryptedKey,
+                };
+            }
         } else if (data) {
             // Text-only record
             encryptedResult = encryptionService.encryptRecord(data);
