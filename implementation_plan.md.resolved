@@ -1,0 +1,311 @@
+# Secure Healthcare Data Sharing Platform – Implementation Plan
+
+A production-grade, privacy-preserving medical record sharing system with AES-256 encryption, RBAC, MFA, patient consent management, immutable audit logs, and a simple blockchain audit trail.
+
+---
+
+## High-Level System Architecture
+
+```mermaid
+graph TB
+    subgraph "Client (Next.js + Tailwind)"
+        FE[Next.js Frontend<br/>Port 3000]
+    end
+
+    subgraph "Docker Network"
+        subgraph "Backend (Express)"
+            API[Express API Server<br/>Port 4000]
+            MW[Middleware Layer<br/>Auth · RBAC · Rate Limit · Consent]
+            SVC[Service Layer<br/>Encryption · Blockchain · Audit]
+        end
+
+        DB[(PostgreSQL<br/>Port 5432)]
+        REDIS[(Redis<br/>Port 6379)]
+        STORE[Encrypted File Store<br/>Docker Volume]
+    end
+
+    FE -->|REST API| API
+    API --> MW --> SVC
+    SVC --> DB
+    SVC --> REDIS
+    SVC --> STORE
+```
+
+### Key Security Layers
+
+| Layer | Implementation |
+|---|---|
+| **Transport** | HTTPS-ready, secure headers (helmet) |
+| **Auth** | JWT access + refresh tokens, bcrypt passwords |
+| **MFA** | TOTP-based OTP via `otplib`, stored in Redis |
+| **Authorization** | RBAC middleware (Patient/Doctor/Admin) |
+| **Consent** | Patient-controlled access grants with TTL |
+| **Encryption** | AES-256-GCM per record, envelope encryption |
+| **ABE (Simplified)** | Attribute-based policy checks before decryption |
+| **Audit** | Append-only access logs + simple blockchain |
+| **Integrity** | SHA-256 hash chain for tamper detection |
+
+---
+
+## Database Schema
+
+```mermaid
+erDiagram
+    User ||--o{ MedicalRecord : owns
+    User ||--o{ Consent : "grants/receives"
+    User ||--o{ AccessLog : triggers
+    User ||--o{ OtpToken : has
+    MedicalRecord ||--o{ AccessLog : "accessed via"
+    MedicalRecord ||--o{ Consent : "governed by"
+
+    User {
+        uuid id PK
+        string email UK
+        string passwordHash
+        enum role "PATIENT|DOCTOR|ADMIN"
+        string name
+        json attributes "dept, specialization"
+        boolean mfaEnabled
+        string mfaSecret
+        datetime createdAt
+    }
+
+    MedicalRecord {
+        uuid id PK
+        uuid patientId FK
+        string title
+        string description
+        text encryptedData "AES-256-GCM"
+        string encryptionIV
+        string encryptionTag
+        string encryptedKey "envelope encryption"
+        string fileType
+        string filePath "encrypted file on disk"
+        json abePolicy "required attributes"
+        datetime createdAt
+    }
+
+    Consent {
+        uuid id PK
+        uuid patientId FK
+        uuid doctorId FK
+        uuid recordId FK "nullable = all records"
+        enum status "ACTIVE|REVOKED|EXPIRED"
+        datetime expiresAt
+        datetime createdAt
+        datetime revokedAt
+    }
+
+    AccessLog {
+        uuid id PK
+        uuid userId FK
+        uuid recordId FK
+        string action "VIEW|DOWNLOAD|UPDATE|DELETE"
+        string ipAddress
+        string userAgent
+        string blockchainHash
+        datetime timestamp
+    }
+
+    OtpToken {
+        uuid id PK
+        uuid userId FK
+        string otp
+        datetime expiresAt
+        boolean used
+    }
+
+    BlockchainBlock {
+        int index PK
+        string previousHash
+        string hash
+        json data "log entry summary"
+        bigint timestamp
+        int nonce
+    }
+```
+
+---
+
+## API Design
+
+### Auth (`/api/auth`)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/register` | Register user | Public |
+| POST | `/login` | Login (returns JWT or MFA challenge) | Public |
+| POST | `/verify-mfa` | Verify OTP and issue tokens | Public |
+| POST | `/refresh` | Refresh access token | Refresh token |
+| POST | `/setup-mfa` | Enable MFA (returns QR) | JWT |
+
+### Medical Records (`/api/records`)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/` | Upload & encrypt record | Patient |
+| GET | `/my` | List own records | Patient |
+| GET | `/:id` | View record (consent check) | Patient/Doctor |
+| GET | `/:id/download` | Download decrypted file | Patient/Doctor |
+| DELETE | `/:id` | Delete record | Patient |
+
+### Consent (`/api/consents`)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/` | Grant access to doctor | Patient |
+| GET | `/my` | List consents (given or received) | Patient/Doctor |
+| PATCH | `/:id/revoke` | Revoke consent | Patient |
+
+### Audit (`/api/audit`)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/logs` | View access logs | Patient/Admin |
+| GET | `/blockchain` | View blockchain | Admin |
+| GET | `/blockchain/verify` | Verify chain integrity | Admin |
+
+### Admin (`/api/admin`)
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/users` | List all users | Admin |
+| GET | `/dashboard` | Stats and metrics | Admin |
+
+---
+
+## Proposed Changes
+
+### Project Structure
+
+```
+/Users/taranjain/.gemini/antigravity/scratch/healthcare-platform/
+├── docker-compose.yml
+├── .env.example
+├── README.md
+├── backend/
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── prisma/
+│   │   └── schema.prisma
+│   └── src/
+│       ├── app.js                 # Express app setup
+│       ├── server.js              # Server entry point
+│       ├── config/
+│       │   └── index.js           # Environment config
+│       ├── middleware/
+│       │   ├── auth.js            # JWT verification
+│       │   ├── rbac.js            # Role-based access
+│       │   ├── consent.js         # Consent enforcement
+│       │   ├── rateLimiter.js     # Rate limiting
+│       │   └── validator.js       # Input validation
+│       ├── routes/
+│       │   ├── auth.js
+│       │   ├── records.js
+│       │   ├── consents.js
+│       │   ├── audit.js
+│       │   └── admin.js
+│       ├── controllers/
+│       │   ├── authController.js
+│       │   ├── recordController.js
+│       │   ├── consentController.js
+│       │   ├── auditController.js
+│       │   └── adminController.js
+│       └── services/
+│           ├── encryptionService.js  # AES-256-GCM
+│           ├── keyManagement.js      # Envelope encryption
+│           ├── abeService.js         # Attribute-based policy
+│           ├── blockchainService.js  # Simple blockchain
+│           ├── mfaService.js         # TOTP/OTP
+│           └── auditService.js       # Logging
+├── frontend/
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── next.config.js
+│   ├── tailwind.config.js
+│   └── src/
+│       ├── app/
+│       │   ├── layout.js
+│       │   ├── page.js              # Landing/login
+│       │   ├── login/page.js
+│       │   ├── register/page.js
+│       │   ├── dashboard/
+│       │   │   ├── patient/page.js
+│       │   │   ├── doctor/page.js
+│       │   │   └── admin/page.js
+│       │   └── mfa/page.js
+│       ├── components/
+│       │   ├── Navbar.js
+│       │   ├── RecordUpload.js
+│       │   ├── ConsentManager.js
+│       │   ├── AuditLogTable.js
+│       │   └── BlockchainViewer.js
+│       └── lib/
+│           ├── api.js               # Axios wrapper
+│           └── auth.js              # Token management
+└── uploads/                         # Docker volume mount
+```
+
+---
+
+### Docker & Infrastructure
+
+#### [NEW] [docker-compose.yml](file:///Users/taranjain/.gemini/antigravity/scratch/healthcare-platform/docker-compose.yml)
+- PostgreSQL 15 container on port **5432** (`POSTGRES_USER=healthcare`, `POSTGRES_PASSWORD=<generated>`, `POSTGRES_DB=healthcare_db`)
+- Redis 7 container on port **6379**
+- Backend container on port **4000** (depends on postgres, redis)
+- Frontend container on port **3000** (depends on backend)
+- Named volumes for `pg_data`, `redis_data`, `uploads`
+
+> [!IMPORTANT]
+> **PostgreSQL Connection Details** (inside Docker network):
+> - **Host**: `postgres` (service name) or `localhost:5432` from host
+> - **User**: `healthcare`
+> - **Password**: Set via `.env` file (auto-generated on first run)
+> - **Database**: `healthcare_db`
+> - **Connection URL**: `postgresql://healthcare:<password>@postgres:5432/healthcare_db`
+
+#### [NEW] [.env.example](file:///Users/taranjain/.gemini/antigravity/scratch/healthcare-platform/.env.example)
+- All environment variables with placeholder values
+- Instructions to generate secrets
+
+---
+
+### Backend
+
+#### [NEW] All backend files
+- Express server with helmet, cors, express-rate-limit, express-validator
+- Prisma schema matching the ER diagram above
+- Service layer for encryption (AES-256-GCM), key management (envelope encryption with master key from env), MFA (TOTP via otplib), blockchain (SHA-256 hash chain), audit logging
+- Controller layer with input validation and proper error responses
+- Middleware chain: `authenticate → authorize(roles) → checkConsent → controller`
+
+---
+
+### Frontend
+
+#### [NEW] All frontend files
+- Next.js 14 App Router with Tailwind CSS
+- Auth pages with MFA flow
+- Role-specific dashboards (Patient, Doctor, Admin)
+- Components: file upload, consent management, audit log viewer, blockchain verifier
+- API client with JWT interceptor and auto-refresh
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Backend startup**: `docker compose up --build` — all 4 services should start without errors
+2. **Database migration**: `docker compose exec backend npx prisma migrate deploy` — schema applied successfully
+3. **API endpoint tests**: Use browser subagent to:
+   - Register a patient and doctor
+   - Login and verify JWT flow
+   - Set up MFA and verify OTP
+   - Upload encrypted medical record
+   - Grant consent from patient to doctor
+   - Doctor views record (should succeed)
+   - Revoke consent, doctor tries again (should 403)
+   - Check audit logs show all actions
+   - Verify blockchain integrity
+
+### Manual Verification
+- Walk through the full UI in browser
+- Verify encryption by inspecting raw DB values (should be ciphertext)
+- Verify file encryption by inspecting uploads directory (binary garbage, not readable)
+- Take screenshots of key flows for walkthrough

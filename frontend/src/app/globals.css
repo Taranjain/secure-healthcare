@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0f1c;
+  --bg-card: #111827;
+  --border-color: #1e293b;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 41, 59, 0.5);
+  border-radius: 16px;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #338dfc 0%, #14b8a6 50%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Animated gradient border */
+.gradient-border {
+  position: relative;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, #338dfc, #14b8a6, #8b5cf6);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.5;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.gradient-border:hover::before {
+  opacity: 1;
+}
+
+/* Glow effects */
+.glow-blue { box-shadow: 0 0 30px rgba(51, 141, 252, 0.15); }
+.glow-teal { box-shadow: 0 0 30px rgba(20, 184, 166, 0.15); }
+.glow-purple { box-shadow: 0 0 30px rgba(139, 92, 246, 0.15); }
+
+/* Button styles */
+.btn-primary {
+  @apply px-6 py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white font-medium rounded-xl 
+         hover:from-primary-500 hover:to-primary-600 transition-all duration-300 
+         shadow-lg shadow-primary-900/30 hover:shadow-primary-900/50 
+         focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-healthcare-bg;
+}
+
+.btn-secondary {
+  @apply px-6 py-2.5 bg-healthcare-card text-gray-300 font-medium rounded-xl 
+         border border-healthcare-border hover:border-primary-500/50 hover:text-white
+         transition-all duration-300;
+}
+
+.btn-danger {
+  @apply px-6 py-2.5 bg-red-900/30 text-red-400 font-medium rounded-xl 
+         border border-red-800/50 hover:bg-red-900/50 hover:text-red-300
+         transition-all duration-300;
+}
+
+/* Input styles */
+.input-field {
+  @apply w-full px-4 py-3 bg-healthcare-surface border border-healthcare-border rounded-xl 
+         text-gray-200 placeholder-gray-500
+         focus:ring-2 focus:ring-primary-500 focus:border-primary-500 focus:outline-none
+         transition-all duration-300;
+}
+
+/* Status badges */
+.badge {
+  @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+}
+.badge-active { @apply bg-emerald-900/40 text-emerald-400 border border-emerald-700/30; }
+.badge-revoked { @apply bg-red-900/40 text-red-400 border border-red-700/30; }
+.badge-expired { @apply bg-amber-900/40 text-amber-400 border border-amber-700/30; }
+.badge-patient { @apply bg-blue-900/40 text-blue-400 border border-blue-700/30; }
+.badge-doctor { @apply bg-purple-900/40 text-purple-400 border border-purple-700/30; }
+.badge-admin { @apply bg-amber-900/40 text-amber-400 border border-amber-700/30; }
+
+/* Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float { animation: float 6s ease-in-out infinite; }

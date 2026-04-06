@@ -1,0 +1,75 @@
+This Secure Healthcare Data Sharing Platform (HealthVault) is a production-grade, highly secure system designed to handle sensitive medical data.
+
+Here is an in-depth breakdown of every core feature, how it works under the hood, and a step-by-step guide on how exactly to use and test the Multi-Factor Authentication (MFA).
+
+1. Data Encryption (AES-256-GCM Envelope)
+How it works: We don't just encrypt data with a single key; we use Envelope Encryption (the exact same architecture used by AWS KMS).
+
+When a Patient uploads a medical record, the system generates a random Data Encryption Key (DEK) specifically for that one record.
+The medical record's contents are encrypted using this unique DEK via AES-256-GCM (which provides both encryption and data integrity authentication).
+The DEK itself is then encrypted using the Master Encryption Key (KEK) from your 
+
+.env
+ file.
+Why this matters: If a hacker dumps your database, they get encrypted records and encrypted unique keys. Without the master key from the server environment, the data is entirely useless to them.
+2. Patient Consent Layer (Access Control)
+How it works: By default, if a Doctor logs in and tries to look at Patient A's records, the backend denies the request. The Doctor needs explicit consent.
+
+A Patient can search for a Doctor and create a Consent Ticket.
+Consents have expiration tracking. They can be granted indefinitely or set to expire.
+When a Doctor requests a patient's record, the consentCheck middleware queries the database. If there is an active consent, the system decrypts the DEK, then decrypts the record, and serves it to the Doctor.
+Patients can inherently view all of their own records and can revoke access to any doctor instantly with a click.
+3. Immutable Blockchain Audit Trail
+How it works: Normal logs can be edited by rogue admins. We prevent this by using a cryptographic hash chain.
+
+Every sensitive action (login, record creation, consent grant, record decryption view) triggers an AuditService event.
+When saving the event, the system takes the hash of the previous audit log in the database, combines it with the current event data, and hashes it using SHA-256.
+Why this matters: If anyone manually breaks into the PostgreSQL database and tries to delete or alter a record of a doctor improperly viewing data, the cryptographic chain breaks. The Admin dashboard has a "Verify Blockchain" button that recalculates all hashes to prove the system hasn't been tampered with.
+4. Role-Based Access Control & Dashboards
+How it works: The JSON Web Token (JWT) issued on login contains the user's role (PATIENT, DOCTOR, or ADMIN).
+
+Patients: Can upload records, grant/revoke consents, and view their own data.
+Doctors: Cannot upload records for patients directly here; they can only view records of patients who have explicitly granted them consent.
+Admins: Have access to the system overview, user lists, and crucially, the Blockchain Verification and Audit Logs views. Admins cannot view decrypted medical records (protecting patient privacy).
+5. Multi-Factor Authentication (MFA) & How to Test It
+Because Doctors and Admins handle sensitive data and global settings, they are required to have MFA enabled. Patients can choose to enable it if they want. The system uses Time-based One-Time Passwords (TOTP), identical to Google Authenticator or Authy.
+
+🛠️ Case A: How to use the Auto-Seeded Demo Doctor
+When you ran docker compose up --build, the 
+
+seed.js
+ script automatically created a demo Doctor block in the terminal logs:
+
+text
+✅ Doctor: doctor@demo.com / Doctor@123
+   MFA Secret: L4XQWU3QFJPQCATN
+Step-by-Step Login:
+
+Download Google Authenticator or Authy on your phone (or a web extension like "Authenticator").
+Open the app, and select "Add manually" or "Enter setup key".
+Type the Account Name as "HealthVault Demo" and type in that exact secret: L4XQWU3QFJPQCATN.
+The app will now generate a rotating 6-digit code every 30 seconds.
+Go to your frontend http://localhost:3000/login.
+Enter doctor@demo.com and Doctor@123. Click Sign In.
+The system will detect MFA is required and show you the OTP screen.
+Look at your Authenticator app, type the 6 numbers into the screen, and boom—you're logged in as a Doctor.
+🛠️ Case B: How a Brand New User Sets Up MFA
+If you go to http://localhost:3000/register to create a brand new Doctor:
+
+Step-by-Step Registration:
+
+Fill out the Register form with a new email, strong password, and select the Doctor role.
+Click Create Account.
+Because Doctors are forced to use MFA, instead of logging them in or sending them to the login screen, they are immediately redirected to the MFA Setup screen.
+The screen will display a QR Code.
+The doctor opens Google Authenticator on their phone, taps the camera icon, and scans the QR code on the screen.
+The app instantly links to the account.
+The doctor clicks "Continue to Login", enters their email/password, and enters the first 6-digit code generated by their app to verify it works.
+🛠️ Case C: A Patient Opting-In to MFA
+Patients are not legally forced to use MFA in this system, but they can opt-in.
+
+Log in as a Patient (e.g., patient@demo.com).
+Click on the MFA 🔐 link in the top navigation bar.
+Click "Enable MFA".
+Scan the presented QR code with your phone.
+Click finish. The next time you log in, the system will challenge you for your 6-digit OTP code to protect your account.
