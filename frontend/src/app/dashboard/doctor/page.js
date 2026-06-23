@@ -16,6 +16,7 @@ function DoctorDashboardContent() {
     const [consents, setConsents] = useState([]);
     const [logs, setLogs] = useState({ logs: [], total: 0 });
     const [selectedRecord, setSelectedRecord] = useState(null);
+    const [filePreviewUrl, setFilePreviewUrl] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -45,11 +46,53 @@ function DoctorDashboardContent() {
 
     async function handleViewRecord(id) {
         setError('');
+        setFilePreviewUrl(null);
         try {
             const { data } = await recordsAPI.getRecord(id);
             setSelectedRecord(data.record);
+
+            // If record has a file, download it for inline preview
+            if (data.record.hasFile) {
+                const fileRes = await recordsAPI.downloadRecord(id);
+                const blob = new Blob([fileRes.data], { type: data.record.fileType });
+                const url = window.URL.createObjectURL(blob);
+                setFilePreviewUrl(url);
+            }
         } catch (err) {
             setError(err.response?.data?.error || 'Cannot view record. You may need consent from the patient.');
+        }
+    }
+
+    function handleDownload() {
+        if (!selectedRecord || !filePreviewUrl) return;
+
+        // Build filename with proper extension
+        const extMap = {
+            'application/pdf': '.pdf',
+            'image/png': '.png',
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/gif': '.gif',
+            'text/plain': '.txt',
+        };
+        const ext = extMap[selectedRecord.fileType] || '';
+        const filename = selectedRecord.title.endsWith(ext)
+            ? selectedRecord.title
+            : `${selectedRecord.title}${ext}`;
+
+        const a = document.createElement('a');
+        a.href = filePreviewUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+
+    function closeModal() {
+        setSelectedRecord(null);
+        if (filePreviewUrl) {
+            window.URL.revokeObjectURL(filePreviewUrl);
+            setFilePreviewUrl(null);
         }
     }
 
@@ -184,21 +227,65 @@ function DoctorDashboardContent() {
                 {/* Record View Modal */}
                 {selectedRecord && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                        <div className="glass-card p-8 w-full max-w-2xl animate-fade-in max-h-[80vh] overflow-y-auto">
+                        <div className="glass-card p-8 w-full max-w-3xl animate-fade-in max-h-[90vh] overflow-y-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-xl font-bold text-white">{selectedRecord.title}</h2>
-                                <button onClick={() => setSelectedRecord(null)} className="text-gray-400 hover:text-white text-xl">✕</button>
+                                <button onClick={closeModal} className="text-gray-400 hover:text-white text-xl">✕</button>
                             </div>
                             <div className="space-y-4">
                                 <p className="text-gray-400">{selectedRecord.description}</p>
-                                <div className="p-4 rounded-xl bg-healthcare-surface border border-healthcare-border">
-                                    <h3 className="text-sm font-medium text-gray-400 mb-2">🔓 Decrypted Medical Data</h3>
-                                    <pre className="text-sm text-emerald-400 font-mono whitespace-pre-wrap">
-                                        {typeof selectedRecord.data === 'string'
-                                            ? (() => { try { return JSON.stringify(JSON.parse(selectedRecord.data), null, 2); } catch { return selectedRecord.data; } })()
-                                            : JSON.stringify(selectedRecord.data, null, 2)}
-                                    </pre>
-                                </div>
+
+                                {/* Decrypted text data */}
+                                {selectedRecord.data ? (
+                                    <div className="p-4 rounded-xl bg-healthcare-surface border border-healthcare-border">
+                                        <h3 className="text-sm font-medium text-gray-400 mb-2">🔓 Decrypted Medical Data</h3>
+                                        <pre className="text-sm text-emerald-400 font-mono whitespace-pre-wrap">
+                                            {typeof selectedRecord.data === 'string'
+                                                ? (() => { try { return JSON.stringify(JSON.parse(selectedRecord.data), null, 2); } catch { return selectedRecord.data; } })()
+                                                : JSON.stringify(selectedRecord.data, null, 2)}
+                                        </pre>
+                                    </div>
+                                ) : null}
+
+                                {/* Inline file preview */}
+                                {filePreviewUrl && selectedRecord.hasFile && (
+                                    <div className="p-4 rounded-xl bg-healthcare-surface border border-healthcare-border">
+                                        <h3 className="text-sm font-medium text-gray-400 mb-2">
+                                            📎 File Preview ({selectedRecord.fileType?.split('/')[1] || 'file'})
+                                        </h3>
+                                        {selectedRecord.fileType?.startsWith('image/') ? (
+                                            <img
+                                                src={filePreviewUrl}
+                                                alt={selectedRecord.title}
+                                                className="max-w-full max-h-[60vh] rounded-lg object-contain mx-auto"
+                                            />
+                                        ) : selectedRecord.fileType === 'application/pdf' ? (
+                                            <div className="w-full h-[60vh] rounded-lg overflow-auto bg-white">
+                                                <object
+                                                    data={filePreviewUrl}
+                                                    type="application/pdf"
+                                                    className="w-full h-full"
+                                                >
+                                                    <p className="p-4 text-center text-gray-500">PDF preview not supported in this browser. Use the download button below.</p>
+                                                </object>
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 text-center text-gray-400">
+                                                <p>Preview not available for this file type.</p>
+                                                <p className="text-xs mt-1">Use the download button below to view the file.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Download button */}
+                                {selectedRecord.hasFile && (
+                                    <button onClick={handleDownload}
+                                        className="btn-secondary text-sm px-4 py-1.5 w-full">
+                                        📥 Download {selectedRecord.fileType?.split('/')[1] || 'File'}
+                                    </button>
+                                )}
+
                                 <div className="flex items-center gap-4 text-xs text-gray-500">
                                     <span>Patient: {selectedRecord.patient?.name}</span>
                                     <span>Created: {new Date(selectedRecord.createdAt).toLocaleString()}</span>

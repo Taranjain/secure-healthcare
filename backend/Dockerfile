@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install OpenSSL for Prisma engine compatibility
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl qpdf
 
 WORKDIR /app
 

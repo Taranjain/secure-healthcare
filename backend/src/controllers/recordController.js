@@ -34,33 +34,41 @@ async function createRecord(req, res) {
         let encryptedResult;
         let filePath = null;
         let fileType = null;
+        let fileEncryptionIV = null;
+        let fileEncryptionTag = null;
+        let fileEncryptedKey = null;
 
         // Handle file upload
+        if (!req.file && !req.body.data) {
+            console.error('UPLOAD ERROR: req.file is missing, req.body.data is missing. Content-Type was:', req.headers['content-type']);
+            return res.status(400).json({ error: 'Either a file or text data must be provided' });
+        }
         if (req.file) {
             const fileBuffer = fs.readFileSync(req.file.path);
-            const { encryptedBuffer, iv, tag, encryptedKey } = encryptionService.encryptFile(fileBuffer);
+            const fileEncrypt = encryptionService.encryptFile(fileBuffer);
 
             // Save encrypted file
             const encFileName = `${Date.now()}_${req.file.originalname}.enc`;
             filePath = path.join(config.uploadDir, encFileName);
-            fs.writeFileSync(filePath, encryptedBuffer);
+            fs.writeFileSync(filePath, fileEncrypt.encryptedBuffer);
             fileType = req.file.mimetype;
 
             // Remove temp upload
             fs.unlinkSync(req.file.path);
 
-            // For text data alongside a file, encrypt with its OWN key/IV/tag
-            // so that decryptRecord() can decrypt it consistently.
-            // The file has its own separate encryption context stored in the filePath.
+            // Always store file encryption metadata separately
+            fileEncryptionIV = fileEncrypt.iv;
+            fileEncryptionTag = fileEncrypt.tag;
+            fileEncryptedKey = fileEncrypt.encryptedKey;
+
             if (data) {
                 encryptedResult = encryptionService.encryptRecord(data);
             } else {
-                // No text data — store the file's encryption metadata
                 encryptedResult = {
                     encryptedData: '',
-                    encryptionIV: iv,
-                    encryptionTag: tag,
-                    encryptedKey,
+                    encryptionIV: '',
+                    encryptionTag: '',
+                    encryptedKey: '',
                 };
             }
         } else if (data) {
@@ -81,6 +89,9 @@ async function createRecord(req, res) {
                 encryptedKey: encryptedResult.encryptedKey,
                 fileType,
                 filePath,
+                fileEncryptionIV,
+                fileEncryptionTag,
+                fileEncryptedKey,
                 abePolicy: abePolicy || {},
             },
             select: {
@@ -266,11 +277,11 @@ async function downloadRecord(req, res) {
 
         // Read and decrypt file
         const encryptedBuffer = fs.readFileSync(record.filePath);
-        const decryptedBuffer = encryptionService.decryptFile(
+        let decryptedBuffer = encryptionService.decryptFile(
             encryptedBuffer,
-            record.encryptionIV,
-            record.encryptionTag,
-            record.encryptedKey
+            record.fileEncryptionIV,
+            record.fileEncryptionTag,
+            record.fileEncryptedKey
         );
 
         // Audit log
@@ -283,8 +294,20 @@ async function downloadRecord(req, res) {
             details: `Downloaded file for record: ${record.title}`,
         });
 
+        // Derive proper file extension from MIME type
+        const extMap = {
+            'application/pdf': '.pdf',
+            'image/png': '.png',
+            'image/jpeg': '.jpg',
+            'image/jpg': '.jpg',
+            'image/gif': '.gif',
+            'text/plain': '.txt',
+        };
+        const ext = extMap[record.fileType] || '';
+        const filename = record.title.endsWith(ext) ? record.title : `${record.title}${ext}`;
+
         res.set('Content-Type', record.fileType || 'application/octet-stream');
-        res.set('Content-Disposition', `attachment; filename="${record.title}"`);
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
         res.send(decryptedBuffer);
     } catch (err) {
         console.error('Download error:', err);

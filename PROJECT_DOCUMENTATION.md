@@ -488,7 +488,7 @@ docker compose up --build
 - Enter `patient@demo.com` / `Patient@123`
 - You land on the Patient Dashboard
 
-### Step 2: Upload a Medical Record
+### Step 2: Upload a Medical Record`
 - Click "Upload Record"
 - Enter a title (e.g., "Blood Test Results")
 - Enter medical data text (e.g., "Hemoglobin: 14.2 g/dL, WBC: 7500")

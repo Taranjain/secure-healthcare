@@ -29,8 +29,12 @@ const config = {
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
 
   // File upload
-  uploadDir: '/app/uploads',
+  uploadDir: process.env.UPLOAD_DIR || '/app/uploads',
   maxFileSize: 10 * 1024 * 1024, // 10MB
+
+  // Rate limiting
+  rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
+  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX, 10) || 200,
 };
 
 // Validate required config

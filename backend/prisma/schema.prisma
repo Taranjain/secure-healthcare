@@ -63,8 +63,11 @@ model MedicalRecord {
   encryptionIV   String             // Initialization vector
   encryptionTag  String             // Auth tag for GCM
   encryptedKey   String             // Envelope-encrypted DEK
-  fileType       String?            // e.g., "application/pdf", "image/png"
-  filePath       String?            // Path to encrypted file on disk
+  fileType           String?            // e.g., "application/pdf", "image/png"
+  filePath           String?            // Path to encrypted file on disk
+  fileEncryptionIV   String?            // IV for file encryption (separate from text)
+  fileEncryptionTag  String?            // Auth tag for file encryption
+  fileEncryptedKey   String?            // Envelope-encrypted DEK for file
   abePolicy      Json     @default("{}") // Required attributes for access
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

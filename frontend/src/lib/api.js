@@ -14,13 +14,18 @@ const api = axios.create({
     headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor - attach access token
+// Request interceptor - attach access token + fix content-type for file uploads
 api.interceptors.request.use((config) => {
     if (typeof window !== 'undefined') {
         const token = localStorage.getItem('accessToken');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+    }
+    // If sending FormData (file upload), remove the JSON content-type
+    // so the browser sets the correct multipart boundary automatically
+    if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
     }
     return config;
 });
@@ -71,9 +76,7 @@ export const authAPI = {
 
 // Records API
 export const recordsAPI = {
-    create: (formData) => api.post('/records', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    create: (formData) => api.post('/records', formData),
     getMyRecords: () => api.get('/records/my'),
     getAccessible: () => api.get('/records/accessible'),
     getRecord: (id) => api.get(`/records/${id}`),

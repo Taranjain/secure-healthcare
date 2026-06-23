@@ -9,6 +9,10 @@
  */
 
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const config = require('../config');
 
 const ALGORITHM = 'aes-256-gcm';
@@ -172,6 +176,42 @@ function decryptRecord(record) {
     return decrypt(record.encryptedData, record.encryptionIV, record.encryptionTag, dek);
 }
 
+/**
+ * Apply password protection to a PDF using qpdf
+ * @param {Buffer} pdfBuffer - Decrypted PDF data
+ * @param {string} password - User password for the PDF
+ * @returns {Buffer} Password-protected PDF
+ */
+/**
+ * Apply password protection to a PDF using qpdf
+ * @param {Buffer} pdfBuffer - Decrypted PDF data
+ * @param {string} password - User password for the PDF
+ * @returns {{ buffer: Buffer, protected: boolean }} Result with possibly protected PDF
+ */
+function protectPdfWithPassword(pdfBuffer, password) {
+    const inputPath = path.join(os.tmpdir(), `pdf_in_${Date.now()}.pdf`);
+    const outputPath = path.join(os.tmpdir(), `pdf_out_${Date.now()}.pdf`);
+    try {
+        fs.writeFileSync(inputPath, pdfBuffer);
+        execFileSync('qpdf', [
+            '--encrypt', password, password + '_owner', '256',
+            '--print=full',
+            '--modify=none',
+            '--extract=n',
+            '--',
+            inputPath,
+            outputPath,
+        ], { stdio: 'pipe', timeout: 15000 });
+        return { buffer: fs.readFileSync(outputPath), protected: true };
+    } catch (err) {
+        console.error('PDF password protection failed, serving unprotected:', err.stderr?.toString()?.slice(0, 100) || err.message?.slice(0, 100));
+        return { buffer: pdfBuffer, protected: false };
+    } finally {
+        try { fs.unlinkSync(inputPath); } catch {}
+        try { fs.unlinkSync(outputPath); } catch {}
+    }
+}
+
 module.exports = {
     generateDEK,
     encrypt,
@@ -182,4 +222,5 @@ module.exports = {
     decryptFile,
     encryptRecord,
     decryptRecord,
+    protectPdfWithPassword,
 };
